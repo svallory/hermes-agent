@@ -1119,6 +1119,24 @@ def preflight_db_writability(
             _ensure_writable(p)
 
 
+def _fts_object_missing(exc: BaseException) -> bool:
+    """True when an FTS probe failure means the table/module is ABSENT
+    (disable search) rather than transiently unavailable (keep it on).
+
+    A missing object is a permanent condition worth latching; a transient
+    failure ("database is locked" during a checkpoint, "disk I/O error") must
+    never disable search for the handle's lifetime, which would turn every
+    subsequent read into a silent false-empty rather than a visible error.
+
+    The runtime probe path uses ``SessionSchemaMixin._fts_table_probe``, which
+    makes the same distinction and re-raises anything transient. This helper
+    exposes the classification on its own for callers and tests that only need
+    to categorise an exception.
+    """
+    msg = str(exc).lower()
+    return "no such table" in msg or "no such module" in msg
+
+
 def _db_opens_cleanly(db_path: Path) -> Optional[str]:
     """Probe a DB on a fresh connection. Returns None if healthy, else a reason.
 
