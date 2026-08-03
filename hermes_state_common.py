@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     model_config TEXT,
     system_prompt TEXT,
     parent_session_id TEXT,
+    claude_sdk_session_id TEXT,
     started_at REAL NOT NULL,
     ended_at REAL,
     end_reason TEXT,

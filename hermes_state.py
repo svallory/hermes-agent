@@ -4017,6 +4017,21 @@ class SessionDB(SessionSearchMixin, SessionSchemaMixin, SessionPortabilityMixin)
             )
         self._execute_write(_do)
 
+    def update_claude_sdk_session_id(
+        self, session_id: str, sdk_session_id: Optional[str]
+    ) -> None:
+        """Persist (or clear, with None) the claude-agent-sdk session id used
+        to resume the SDK conversation across gateway restarts and
+        agent-cache eviction (#25267 continuity)."""
+
+        def _do(conn):
+            conn.execute(
+                "UPDATE sessions SET claude_sdk_session_id = ? WHERE id = ?",
+                (sdk_session_id, session_id),
+            )
+
+        self._execute_write(_do)
+
     def update_session_model(self, session_id: str, model: str) -> None:
         """Update the model for a session after a mid-session switch.
 
