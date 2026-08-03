@@ -11091,6 +11091,36 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
         self._running = True
         self._update_runtime_status("running")
 
+        # Periodically refresh gateway_state.json's updated_at (webui #1879).
+        # _update_runtime_status() only fires on state transitions, so an idle
+        # gateway (no platforms, no agents) leaves the file frozen at startup.
+        # The WebUI's cross-container liveness fallback treats a >120s-old
+        # updated_at as a dead gateway, because os.kill(pid, 0) cannot see
+        # across PID namespaces. Touching it on the heartbeat interval keeps
+        # that signal honest without changing any reported state.
+        async def _refresh_runtime_status_forever(interval_s: float) -> None:
+            from gateway.status import write_runtime_status
+
+            while True:
+                await asyncio.sleep(interval_s)
+                try:
+                    write_runtime_status()
+                except Exception:
+                    logger.debug("runtime status refresh failed", exc_info=True)
+
+        try:
+            _existing_rs = getattr(self, "_runtime_status_task", None)
+            if _existing_rs is None or _existing_rs.done():
+                self._runtime_status_task = asyncio.create_task(
+                    _refresh_runtime_status_forever(DEFAULT_HEARTBEAT_INTERVAL_S)
+                )
+                _bg_rs = getattr(self, "_background_tasks", None)
+                if _bg_rs is not None:
+                    _bg_rs.add(self._runtime_status_task)
+                    self._runtime_status_task.add_done_callback(_bg_rs.discard)
+        except Exception:
+            logger.debug("Failed to start runtime status refresh", exc_info=True)
+
         # Loop-liveness heartbeat (#66892): an asyncio task so a frozen loop
         # stops refreshing ``state/gateway.heartbeat``. Cancelled with the
         # other background tasks during stop(). Best-effort — a liveness probe
